@@ -67,13 +67,7 @@ Resources:
     Properties:
       GroupDescription: allow connections from internet      
       VpcId: !Ref VPC
-      SecurityGroupIngress:
-      - IpProtocol: tcp
-        FromPort: 22
-        ToPort: 22
-        CidrIp: 0.0.0.0/0        
-          
-          
+                    
   BombardFirst:
     Type: AWS::EC2::Instance
     Properties:
